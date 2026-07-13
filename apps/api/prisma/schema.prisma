@@ -1,0 +1,182 @@
+// ══════════════════════════════════════════════
+//  FleetOps — Prisma Schema
+//  Base de données PostgreSQL
+// ══════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Utilisateurs ──────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  role         String   // admin | gestionnaire_transport | conducteur_travaux | chauffeur
+  phone        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  supervisedSites  Site[]             @relation("Supervisor")
+  requests         TransportRequest[] @relation("Requester")
+  driverAssignments DailyAssignment[] @relation("Driver")
+  absences         Absence[]
+
+  @@map("users")
+}
+
+// ── Référentiel véhicules ─────────────────
+
+model VehicleType {
+  id       String @id @default(cuid())
+  code     String @unique  // 2AX, 3AX, 4AX, 4AG, BIB, CAI
+  label    String          // 2 axes benne, 4 axes grue...
+  category String          // benne, grue, caisse
+
+  vehicles Vehicle[]
+  requests TransportRequest[]
+
+  @@map("vehicle_types")
+}
+
+model VehicleAccessory {
+  id                      String @id @default(cuid())
+  code                    String @unique  // REM, PLT, GRP
+  label                   String          // Remorque, Plateau, Grappin
+  compatibleVehicleTypes  String[]        // IDs des types compatibles
+
+  @@map("vehicle_accessories")
+}
+
+model Vehicle {
+  id            String   @id @default(cuid())
+  code          String   @unique  // C48, C52, FR01...
+  vehicleTypeId String   @map("vehicle_type_id")
+  licensePlate  String   @map("license_plate")
+  status        String   @default("active") // active | reserve | maintenance
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  vehicleType   VehicleType      @relation(fields: [vehicleTypeId], references: [id])
+  assignments   DailyAssignment[]
+
+  @@map("vehicles")
+}
+
+// ── Chantiers ─────────────────────────────
+
+model Site {
+  id           String   @id @default(cuid())
+  code         String   @unique  // 40215, 40320...
+  name         String
+  address      String
+  city         String
+  supervisorId String   @map("supervisor_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  supervisor   User               @relation("Supervisor", fields: [supervisorId], references: [id])
+  requests     TransportRequest[]
+
+  @@map("sites")
+}
+
+// ── Demandes de transport ─────────────────
+
+model TransportRequest {
+  id              String   @id @default(cuid())
+  siteId          String   @map("site_id")
+  vehicleTypeId   String   @map("vehicle_type_id")
+  quantity        Int      @default(1)
+  missionMode     String   @default("duration") @map("mission_mode") // duration | trips
+  startTime       String?  @map("start_time")
+  endTime         String?  @map("end_time")
+  tripCount       Int?     @map("trip_count")
+  description     String   @default("")
+  priority        String   @default("normal") // normal | urgent
+  recurrenceType  String   @default("one_time") @map("recurrence_type") // one_time | recurring
+  recurrenceStart String?  @map("recurrence_start")
+  recurrenceEnd   String?  @map("recurrence_end")
+  status          String   @default("submitted") // draft | submitted | assigned | partially_assigned | in_progress | completed | cancelled
+  requestedById   String   @map("requested_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  site          Site              @relation(fields: [siteId], references: [id])
+  vehicleType   VehicleType       @relation(fields: [vehicleTypeId], references: [id])
+  requestedBy   User              @relation("Requester", fields: [requestedById], references: [id])
+  assignments   DailyAssignment[]
+
+  @@map("transport_requests")
+}
+
+// ── Affectations quotidiennes ─────────────
+
+model DailyAssignment {
+  id             String   @id @default(cuid())
+  date           String   // YYYY-MM-DD
+  requestId      String   @map("request_id")
+  vehicleId      String   @map("vehicle_id")
+  driverId       String   @map("driver_id")
+  missionDetails String?  @map("mission_details")
+  source         String   @default("manual") // manual | auto_renewed | copilot
+  startTime      String?  @map("start_time")
+  endTime        String?  @map("end_time")
+  status         String   @default("planned") // planned | started | completed | cancelled
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  request  TransportRequest @relation(fields: [requestId], references: [id])
+  vehicle  Vehicle          @relation(fields: [vehicleId], references: [id])
+  driver   User             @relation("Driver", fields: [driverId], references: [id])
+  incidents Incident[]
+
+  @@unique([date, vehicleId, startTime])
+  @@map("daily_assignments")
+}
+
+// ── Absences ──────────────────────────────
+
+model Absence {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  startDate String   @map("start_date")
+  endDate   String   @map("end_date")
+  reason    String   // maladie | congé | formation | autre
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("absences")
+}
+
+// ── Incidents ─────────────────────────────
+
+model Incident {
+  id           String   @id @default(cuid())
+  assignmentId String   @map("assignment_id")
+  type         String   // panne | retard | acces | chargement | securite | autre
+  description  String   @default("")
+  reportedAt   DateTime @default(now()) @map("reported_at")
+  resolvedAt   DateTime? @map("resolved_at")
+
+  assignment DailyAssignment @relation(fields: [assignmentId], references: [id])
+
+  @@map("incidents")
+}

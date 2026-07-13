@@ -1,30 +1,19 @@
-// ══════════════════════════════════════════════
-//  AuthController — endpoints d'authentification
-// ══════════════════════════════════════════════
-
 import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
-
-class LoginDto {
-  email: string;
-  password: string;
-}
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  /** POST /api/auth/login — connexion email/mot de passe */
   @Post('login')
-  async login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  async login(@Body() body: { email: string; password: string }) {
+    return this.auth.login(body.email, body.password);
   }
 
-  /** GET /api/auth/me — récupérer l'utilisateur connecté */
   @UseGuards(AuthGuard('jwt'))
   @Get('me')
-  async me(@Request() req: any) {
+  async me(@Request() req) {
     return {
       id: req.user.id,
       email: req.user.email,

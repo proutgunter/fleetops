@@ -83,6 +83,7 @@ model Vehicle {
   assignments  DailyAssignment[]
   maintenance  MaintenanceEvent[]
   documents    Document[]
+  costEntries  CostEntry[]
 
   @@map("vehicles")
 }
